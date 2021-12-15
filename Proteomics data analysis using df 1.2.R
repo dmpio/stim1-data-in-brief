@@ -24,8 +24,8 @@ peptides = fread(paste0(peptide_data, ".txt"), header = T)
 proteins = fread(paste0(protein_data, ".txt"), header = T)
 
 # variables for the samples being compared and the total number of samples
-ID_names = c("WT", "KO") 
-total_number_of_samples = 10
+ID_names = c("WT", "KO", "pool") 
+total_number_of_samples = 11
 
 
 
@@ -393,33 +393,24 @@ normalized_protein = normalize_df(reduced_rows_protein, peptides, "protein", "F2
 normalized_peptide = normalize_df(reduced_rows_peptide, reduced_rows_protein, "peptide", "F2")
 
 
-
-cand_targets = c("ME3", "ATP5F1A", "PDHA1", "FH", "DLD", "DLST", "OGDH", "PCCA", "IDH3G", "ACAT1", "AK3", "HSPA9", "NDUFS4",
-                 "HADHA", "HSD17B8")
-
-
-
-#quantification
-
-control = c("control")
-variables = c("TRF")
-
-# for limma analysis
-samples_to_compare = c("control", "TRF")
+# quantification
+samples_to_compare = c("KO", "WT")
 number_of_reps = c(5,5)
-control = c("control")
-variables = c("TRF")
+control = c("WT")
+variables = c("KO")
 
 # type = 1 is the standard proteomics analysis, which consists of getting the mean, SD, FC, two.sided t.test,
 # and the adjusted p.value (q.value) using BH method
 # type = 2 uses the limma package to calculate the FC (coefficient) and the adjusted p.value
 # each type is split into 2 parts, the first is if the method is for just abundance, the second is for if the method is more than 2
-new_final_df = function(df, ID_names, method, type){
-  if (type == 1){
 
-    if(length(method) == 1){
+new_final_df = function(df, method, type){
+  if (type == 1){
+    
+    multi_method = lapply(method, function(z){
+      
       df_names = df %>%
-        select(., starts_with(method)) %>%
+        select(., starts_with(z)) %>%
         names()
       
       sample_names = lapply(make_clean_names(ID_names), function(x) grep(x, df_names, value = T, fixed=T))
@@ -430,29 +421,27 @@ new_final_df = function(df, ID_names, method, type){
         df2 = as.matrix(x)
         means = rowMeans(df2, na.rm=T)
       })
-      names(means1) = c(paste0("mean_", ID_names))
+      names(means1) = c(paste0(z, "_mean_", ID_names))
       
       
       sd = lapply(protein2, function(x){
         df2 = as.matrix(x)
         sd = apply(df2, 1, sd, na.rm=T)
       })
-      names(sd) = c(paste0("SD_", ID_names))
-      
-      
+      names(sd) = c(paste0(z, "_sd_", ID_names))
       
       control_1 = means1[paste0("mean_", control)]
       variables_1 = means1[paste0("mean_", variables)]
       
       # try this do.call(cbind, purrr::map2(BASE, FUTURE, ~ .x[, 4] - .y[, 4]))
       fc = vector('list', length(variables))
-      names(fc) = c(paste("FC_", variables, "-", control, sep = ""))
+      names(fc) = c(paste(z, "_FC_", variables, "-", control, sep = ""))
       for(i in 1:length(variables)){
         fc[[i]] = unlist(variables_1[[i]] - unlist(control_1[[1]]))
       }
       
       df2 = df %>%
-        select(contains(method))
+        dplyr::select(.,contains(z))
       
       control_sample_names = lapply(make_clean_names(control), function(x) grep(x, df_names, value = T, fixed=T))
       variables_sample_names = lapply(make_clean_names(variables), function(x) grep(x, df_names, value = T, fixed=T))
@@ -462,95 +451,24 @@ new_final_df = function(df, ID_names, method, type){
         t_test2[[i]] = apply(df2, 1, function(y) {tryCatch(t.test(y[control_sample_names[[1]]], y[variables_sample_names[[i]]], alternative = "two.sided", var.equal = T)$p.value, error = function(err){return(NA)})})
       }
       
+      q_value = as.data.frame(p.adjust(unlist(t_test2), method = "BH"))
+      stat_results = as.data.frame(cbind(p.value = t_test2, q.value =  q_value))
       
-      q_value = p.adjust(unlist(t_test2), method = "BH")
-      final = as.data.frame(cbind(df, means1, sd, fc, t_test2, unname(q_value)))
+      colnames(stat_results) = paste0(z, c("_p.value_", "_q.value_"), variables, "_over_", control)
       
-      setnames(final, "unname(q_value)", "q_value")
-      
-      return(final)
-      
-      
-    }
-    
-    
-    else if(length(method) == 2){
-      
-      int = lapply(method, function(z){
-        
-        df_names = df %>%
-          select(., starts_with(z)) %>%
-          names()
-        
-        sample_names = lapply(make_clean_names(ID_names), function(x) grep(x, df_names, value = T, fixed=T))
-        
-        protein2 = lapply(sample_names, function(x) as.matrix(subset(df, select = x)))
-        
-        means1 = lapply(protein2, function(x){
-          df2 = as.matrix(x)
-          means = rowMeans(df2, na.rm=T)
-        })
-        names(means1) = c(paste0(z, "_mean_", ID_names))
-        
-        
-        sd = lapply(protein2, function(x){
-          df2 = as.matrix(x)
-          sd = apply(df2, 1, sd, na.rm=T)
-        })
-        names(sd) = c(paste0(z, "_SD_", ID_names))
-        
-        
-        
-        control_1 = means1[paste0(z, "_mean_", control)]
-        variables_1 = means1[paste0(z, "_mean_", variables)]
-        
-        # try this do.call(cbind, purrr::map2(BASE, FUTURE, ~ .x[, 4] - .y[, 4]))
-        fc = vector('list', length(variables))
-        names(fc) = c(paste(z, "_FC_", variables, "-", control, sep = ""))
-        for(i in 1:length(variables)){
-          fc[[i]] = unlist(variables_1[[i]] - unlist(control_1[[1]]))
-        }
-        
-        df2 = df %>%
-          select(contains(z))
-        
-        control_sample_names = lapply(make_clean_names(control), function(x) grep(x, df_names, value = T, fixed=T))
-        variables_sample_names = lapply(make_clean_names(variables), function(x) grep(x, df_names, value = T, fixed=T))
-        t_test2 = vector('list', length(variables))
-        names(t_test2) = c(paste(z, "p.value_", variables, "_to_", control, sep = ""))
-        for(i in 1:length(variables)){
-          t_test2[[i]] = apply(df2, 1, function(y) {tryCatch(t.test(y[control_sample_names[[1]]], y[variables_sample_names[[i]]], alternative = "two.sided", var.equal = T)$p.value, error = function(err){return(NA)})})
-        }
-        
-        
-        q_value = as.data.frame(p.adjust(unlist(t_test2), method = "BH"))
-        
-        colnames(q_value) = paste(z, "q_value", sep = "_")
-        
-        final1 = cbind(means1, sd, fc, t_test2, q_value)
-        
-        #final = as.data.frame(cbind(df, means1, sd, fc, t_test2, unname(q_value)))
-        
-        #setnames(final, "unname(q_value)", "q_value")
-        
+      final = as.data.frame(cbind(means1, sd, stat_results))
 
-        
-      })
-      
-      final1 = as.data.frame(cbind(df, flatten(int)))
-    }
+    })
     
-    
+    final1 = as.data.frame(cbind(df, multi_method))
   }
-  
-  else if (type == 2){
+    else if (type == 2){
     library(limma)
     
-    # method 1 is for 
-    if(length(method) == 1) {
+    multi_method = lapply(method, function(z){
       
       df_names = df %>%
-        select(., starts_with(method)) %>%
+        dplyr::select(., starts_with(z)) %>%
         names()
       
       sample_names = lapply(make_clean_names(ID_names), function(x) grep(x, df_names, value = T, fixed=T))
@@ -561,28 +479,27 @@ new_final_df = function(df, ID_names, method, type){
         df2 = as.matrix(x)
         means = rowMeans(df2, na.rm=T)
       })
-      names(means1) = c(paste0("mean_", ID_names))
+      names(means1) = c(paste0(z, "_mean_", ID_names))
       
       
       sd = lapply(protein2, function(x){
         df2 = as.matrix(x)
         sd = apply(df2, 1, sd, na.rm=T)
       })
-      names(sd) = c(paste0("SD_", ID_names))
+      names(sd) = c(paste0(z, "_sd_", ID_names))
       
       # this is where i start the limma analysis
-      
-      
       # use the normalzied data, it is already log2 transformed
       
       df1 = df %>%
-        select(starts_with(method))
+        dplyr::select(., starts_with(z)) %>%
+        dplyr::select(., contains(control) | contains(variables))
       
       # Design linear model with no intercept and no interaction
       # Group is the Genotype
       group_fct = factor(paste(rep(samples_to_compare, number_of_reps)))
       
-      group_design = model.matrix(~0+group_fct)
+      group_design = model.matrix(~0 + group_fct)
       
       # Rename column names in the design
       colnames(group_design) = samples_to_compare
@@ -591,9 +508,8 @@ new_final_df = function(df, ID_names, method, type){
       group_fit = lmFit(df1, group_design)
       
       # Generate the contrast maps
-      group_contMat = makeContrasts(TRFvscontrol = TRF - control,
+      group_contMat = makeContrasts(VariableVsControl = paste0(variables, "-", control),
                                     levels=group_design)
-      
       
       # Fit the Contrasts to the product of lmFit
       group_fit_cont = contrasts.fit(group_fit, group_contMat)
@@ -601,103 +517,32 @@ new_final_df = function(df, ID_names, method, type){
       # Now perform the eBayes on this new fit
       group_fit_cont_eb = eBayes(group_fit_cont)
       
-      # Perform the comparisons, with each contrast individually
-      # Use Benj. Hoch. for With FDR = 0.05
-      group_fit_cont_eb_decide <- decideTests(group_fit_cont_eb, 
-                                           method="separate", 
-                                           adjust.method = "BH", 
-                                           p.value = 0.05)
+      group_fit_cont_eb_decide = decideTests(group_fit_cont_eb, 
+                                              method = "separate", 
+                                              adjust.method = "BH", 
+                                              p.value = 0.05)
       
-      limma_analysis = as.data.frame(cbind(group_fit_cont_eb$coefficients, group_fit_cont_eb$p.value, group_fit_cont_eb_decide))
-      colnames(limma_analysis) = c("FC", "p.value", "dT_corrected")
+      q_value = as.data.frame(p.adjust(group_fit_cont_eb$p.value, method = "BH"))
+      
+      limma_analysis = as.data.frame(cbind(group_fit_cont_eb$coefficients, group_fit_cont_eb$p.value, 
+                                           q_value, group_fit_cont_eb_decide))
+      
+      colnames(limma_analysis) = paste0(z, c("_FC_", "_p.value_", "_q.value_", "_significance_"), variables, "over", control)
+      
+      final = as.data.frame(cbind(means1, sd, limma_analysis))
       
       
-      limma_q_value = p.adjust(limma_analysis$p.value, method = "BH")
-      
-      final <- as.data.frame(cbind(df, means1, sd, limma_analysis, limma_q_value))
-      
+    })
+    
+    final1 = as.data.frame(cbind(df, multi_method))
       
     }
     
-    else if(length(method) == 2){
-      
-      int = lapply(method, function(z){
-        
-        df_names = df %>%
-          select(., starts_with(z)) %>%
-          names()
-        
-        sample_names = lapply(make_clean_names(ID_names), function(x) grep(x, df_names, value = T, fixed=T))
-        
-        protein2 = lapply(sample_names, function(x) as.matrix(subset(df, select = x)))
-        
-        means1 = lapply(protein2, function(x){
-          df2 = as.matrix(x)
-          means = rowMeans(df2, na.rm=T)
-        })
-        names(means1) = c(paste0("mean_", ID_names))
-        
-        
-        sd = lapply(protein2, function(x){
-          df2 = as.matrix(x)
-          sd = apply(df2, 1, sd, na.rm=T)
-        })
-        names(sd) = c(paste0("SD_", ID_names))
-        
-        # this is where i start the limma analysis
-        # use the normalzied data, it is already log2 transformed
-        
-        df1 = df %>%
-          select(starts_with(z))
-        
-        # Design linear model with no intercept and no interaction
-        # Group is the Genotype
-        group_fct = factor(paste(rep(samples_to_compare, number_of_each_samples)))
-        
-        group_design = model.matrix(~0+group_fct)
-        
-        # Rename column names in the design
-        colnames(group_design) = samples_to_compare
-        
-        # Limma Step 1: Least Squares Estimates 
-        group_fit = lmFit(df1, group_design)
-        
-        # Generate the contrast maps
-        group_contMat = makeContrasts(TRFvscontrol = TRF - control,
-                                      levels=group_design)
-        
-        # Fit the Contrasts to the product of lmFit
-        group_fit_cont = contrasts.fit(group_fit, group_contMat)
-        
-        # Now perform the eBayes on this new fit
-        group_fit_cont_eb = eBayes(group_fit_cont)
-        
-        limma_analysis = as.data.frame(cbind(group_fit_cont_eb$coefficients, group_fit_cont_eb$p.value))
-        
-        #colnames(limma_analysis) = c(paste0(rep("FC_", length(variables)), variables, "/", control),
-        #                            paste0(rep("p.value_", length(variables)), variables, "_to_", control))
-        
-        colnames(limma_analysis) = paste0(z, c("_FC_", "_p.value_"), variables, "/", control)
-        
-        final <- as.data.frame(cbind(means1, sd, limma_analysis))
-        
-      })
-      
-      final1 = as.data.frame(cbind(df, int))
-      
-    }
-    
-    
-    
-    
-  }
-  
 }
 
+final_proteins = new_final_df(df = normalized_protein, method = list("abundance"), type = 1)
 
-final_proteins2 = new_final_df(normalized_protein, ID_names, "abundance", 1)
-
-final_peptides = new_final_df(normalized_peptide, ID_names, c("abundance", "relative_occupancy"), 2)
+final_peptides = new_final_df(df = normalized_peptide, method = list("abundance", "relative_occupancy"), type = 1)
 
 
 
