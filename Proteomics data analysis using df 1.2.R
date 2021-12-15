@@ -32,7 +32,6 @@ total_number_of_samples = 11
 # list of all description columns the user wants to pull from the raw data
 # in Proteome Discover V2.5 we export the protein and peptide isoform data with all available
 # columns. We then only choose a subset of them to keep in the post-analysis tables
-# t
 
 desc_cols = function(method){
   
@@ -66,13 +65,13 @@ description_cols = desc_cols(2)
 
 
 # reducing cols function
-# reduces the number of columns. Keeps the columns set in the description cols list, and abundance quantification
-# values
-# protein1 removes and renames the protein dataframe based on colnames and description_cols
-# protein2 retains is attempt to normalize between TMT kits, it will pull the all input abundance data
+# reduces the number of columns. Keeps the columns set in the description cols list, and abundance quantification values
+# There are 2 different methods that can be used, the first is method = "protein" for protein data and
+# the other is method = "peptide-phos" for phospho data. 
+
 
 # df1 
-reduce_cols = function(df1, df2, method, fraction){
+reduce_cols = function(df1, method, fraction){
   if(method == "protein"){
     
     df1 = clean_names(df1)
@@ -105,11 +104,10 @@ reduce_cols = function(df1, df2, method, fraction){
   else if(method == "peptide-phos"){
 
     df1 = clean_names(df1)
-    df2 = clean_names(df2)
+    df2 = clean_names(proteins)
     
     reduced_peptides <- df1 %>%
       select(., all_of(description_cols[[2]]), starts_with(paste0("abundance_", paste0(fraction, "_"))))
-      #rename_at(vars(starts_with(paste0("abundance_", paste0(fraction, "_")))), ~ paste0("abundance_phos_", column_names, sep = " ")) 
 
     # split the master protein accessions column into two, in order to get the first accession number
     accession = as.data.frame(str_split_fixed(df1$`master_protein_accessions`, ";", 2))
@@ -145,58 +143,18 @@ reduce_cols = function(df1, df2, method, fraction){
     return(reduced_peptides4)
     
   }
-  
-  else if(method == "peptide-acetyl"){
-    
-    #starts_with(paste("Abundance:", paste(fraction, ":", sep = ''), sep = ' '))
-    # reduces the columns and renames the acetyl peptide abundance column names
-    reduced_peptides <- df1 %>%
-      select(., all_of(description_cols[[2]]), contains(paste("Abundance:", paste(fraction, ":", sep = ''), sep = ' '))) %>%
-      rename_at(vars(starts_with(paste("Abundance:", paste(fraction, ":", sep = ''), sep = ' '))), ~ paste("abundance_acetyl_", column_names, sep = " ")) %>%
-      clean_names() 
-    
-    
-    
-    # split the master protein accessions column into two, in order to get the first accession number
-    Accession = as.data.frame(str_split_fixed(df1$`Master Protein Accessions`, ";", 2))
-    colnames(Accession)[1] = c("Accession")
-    
-    # add it back to the df
-    reduced_peptides2 = cbind(reduced_peptides, Accession[1])
-    
-    # pull the accession and description columns from the protein df and join them with the
-    # reduced_peptides2 data
-    proteins2 = select(df2, Accession, Description)
-    
-    joining = reduced_peptides2 %>%
-      left_join(., proteins2, by = "Accession") 
-    
-    # splits the description column and extracts just the gene name
-    split_ref = as.data.frame(str_split_fixed(joining$Description, "GN=",2))
-    split_ref2 = as.data.frame(str_split_fixed(split_ref$V2, "PE=", 2))
-    colnames(split_ref2) = c("gene_name", "toss")
-    
-    reduced2 = cbind(joining, split_ref2[1])
-    
-    # creates the final version of the data frame and renames the new accession column
-    final = reduced2 %>%
-      rename("1st_master_protein_accession" = Accession)
-    
-    
-    return(final)
-    
-  }
-  
 }
 
-reduced_cols_protein = reduce_cols(proteins, proteins, method = "protein", "F2")
+reduced_cols_protein = reduce_cols(proteins, method = "protein", "F2")
 
-reduced_cols_peptide = reduce_cols(peptides, proteins, method = "peptide-phos", "F6")
+reduced_cols_peptide = reduce_cols(peptides, method = "peptide-phos", "F6")
 
 # reducing rows of dataframe
-# "tmt_protein" is for only keeping IsMasterProtein, and qvalue < 0.01 and removes proteins that are
+
+# df is the data.frame that will be used in the analysis
+# method = "tmt_protein" is for only keeping IsMasterProtein, and qvalue < 0.01 and removes proteins that are
 # only in 1/2 the samples
-# "tmt_peptide_phos" filters data that has "Phospho" in modification column
+# method = "tmt_peptide_phos" filters data that has "Phospho" in modification column
 
 reduce_rows = function(df, method){
   if(method == "tmt_protein"){
@@ -243,9 +201,9 @@ reduce_rows = function(df, method){
   
 }
 
-reduced_rows_protein = reduce_rows(reduced_cols_protein, "tmt_protein")
+reduced_rows_protein = reduce_rows(reduced_cols_protein, method = "tmt_protein")
 
-reduced_rows_peptide = reduce_rows(reduced_cols_peptide, "tmt_peptide_phos")
+reduced_rows_peptide = reduce_rows(reduced_cols_peptide, method = "tmt_peptide_phos")
 
 
 # normalization
