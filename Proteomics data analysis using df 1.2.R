@@ -30,9 +30,9 @@ total_number_of_samples = 11
 
 
 # list of all description columns the user wants to pull from the raw data
-# in Proteome Discover V2.5 we export the protein and peptide isoform data with all available
+# in Proteome Discoverer V2.5 we export the protein and peptide isoform data with all available
 # columns. We then only choose a subset of them to keep in the post-analysis tables
-
+# This list is hard coded and can be altered by the user depends on the database used
 desc_cols = function(method){
   
   if (method == 1){
@@ -65,22 +65,26 @@ description_cols = desc_cols(2)
 
 
 # reducing cols function
-# reduces the number of columns. Keeps the columns set in the description cols list, and abundance quantification values
-# There are 2 different methods that can be used, the first is method = "protein" for protein data and
-# the other is method = "peptide-phos" for phospho data. 
+## reduces the number of columns in the dataframe based on the description cols list, and abundance quantification values
 
+# arguments
+# df is the proteins or peptides dataframe that was initially read into the environment
+# method is which type of data the df1 corresponds with
+## There are 2 different methods that can be used, the first is method = "protein" for protein data and
+## the other is method = "peptide-phos" for phospho data.
+# fraction is the nomenclature that I'm using to differentiate between the protein and phosphopeptide data
+## based on how they were labeled in the PD search engine
 
-# df1 
-reduce_cols = function(df1, method, fraction){
+reduce_cols = function(df, method, fraction){
   if(method == "protein"){
     
-    df1 = clean_names(df1)
+    df1 = clean_names(df)
     
     reduced_protein <- df1 %>%
       setnames(names(select(., contains("q_value"))), "exp_q_value") %>%
       select(., all_of(description_cols[[1]]), starts_with(paste0("abundance_", paste0(fraction, "_")))) 
 
-   reduced_protein[reduced_protein == 0] = NA
+   #reduced_protein[reduced_protein == 0] = NA
     
     # splits the description column and extracts just the gene name
     split_ref = as.data.frame(str_split_fixed(reduced_protein$description, "GN=",2))
@@ -105,14 +109,14 @@ reduce_cols = function(df1, method, fraction){
   
   else if(method == "peptide-phos"){
 
-    df1 = clean_names(df1)
+    df1 = clean_names(df)
     df2 = clean_names(proteins)
     
     reduced_peptides <- df1 %>%
       select(., all_of(description_cols[[2]]), starts_with(paste0("abundance_", paste0(fraction, "_"))))
 
     
-    reduced_peptides[reduced_peptides == 0] = NA
+    #reduced_peptides[reduced_peptides == 0] = NA
     
     # split the master protein accessions column into two, in order to get the first accession number
     accession = as.data.frame(str_split_fixed(df1$`master_protein_accessions`, ";", 2))
@@ -150,16 +154,16 @@ reduce_cols = function(df1, method, fraction){
   }
 }
 
-reduced_cols_protein = reduce_cols(proteins, method = "protein", "F2")
+reduced_cols_protein = reduce_cols(df = proteins, method = "protein", fraction = "F2")
 
-reduced_cols_peptide = reduce_cols(peptides, method = "peptide-phos", "F6")
+reduced_cols_peptide = reduce_cols(df = peptides, method = "peptide-phos", fraction =  "F6")
 
 # reducing rows of dataframe
 
 # df is the data.frame that will be used in the analysis
 # method = "tmt_protein" is for only keeping IsMasterProtein, and qvalue < 0.01 and removes proteins that are
-# only in 1/2 the samples
-# method = "tmt_peptide_phos" filters data that has "Phospho" in modification column
+## only identified in 1/2 the samples
+## method = "tmt_peptide_phos" filters data that has "Phospho" in modification column
 
 reduce_rows = function(df, method){
   if(method == "tmt_protein"){
@@ -167,7 +171,7 @@ reduce_rows = function(df, method){
     reduced_df = df %>%
       mutate(na_row_count = rowSums(is.na(select(df, starts_with("abundance"))))) %>%
       select(everything(), -starts_with("abundance"),  na_row_count, starts_with("abundance")) %>%
-      filter(na_row_count <= total_number_of_samples/2) %>%
+      filter(na_row_count <= floor(total_number_of_samples/2)) %>%
       filter(master == "IsMasterProtein" & exp_q_value < 0.01)
       
     change2 = function(df, oldname, newname){
@@ -206,26 +210,30 @@ reduce_rows = function(df, method){
   
 }
 
-reduced_rows_protein = reduce_rows(reduced_cols_protein, method = "tmt_protein")
+reduced_rows_protein = reduce_rows(df = reduced_cols_protein, method = "tmt_protein")
 
-reduced_rows_peptide = reduce_rows(reduced_cols_peptide, method = "tmt_peptide_phos")
+reduced_rows_peptide = reduce_rows(df = reduced_cols_peptide, method = "tmt_peptide_phos")
 
 
-# normalization
+# normalization function
+
 # Normalizes the data to the ratio of the  colsums / mean(columns)
-# the df1 argument is ideally the reduced_rows of either the protein or peptide data
-# the df2 argument is the 
+# df1 argument is ideally the reduced_rows of either the protein or phosphopeptide data
+# method is either the protein or phospeptide
+# fraction is which fraction to normalize too, it should ALWAYS be whichever fraction
+## the input data is in. You don't want to normliaze to the phosphopeptide data
+# show_norm_boxplot will only work for the protein data, 
 
 # change the fraction to the fraction in which the input is in
 
-normalize_df = function(df1, method, fraction, show_norm_boxplot) {
+normalize_df = function(df, method, fraction, show_norm_boxplot) {
   
   if(method == "protein"){
     
     # normalize the protein abundance between sample by using the ratio (sum/avg) of the peptide data
     # make sure to use the original peptide data and not a df that was already reduced
     
-    norm_names_df1 = grep("abundance", names(df1), value = TRUE)
+    norm_names_df1 = grep("abundance", names(df), value = TRUE)
 
     reduced_pep = peptides %>%
       select(starts_with(paste("Abundance:", paste(fraction, ":", sep = ''), sep = ' '))) %>%
@@ -249,10 +257,9 @@ normalize_df = function(df1, method, fraction, show_norm_boxplot) {
     # normalize protein data based on peptide ratios
     
     
-    adj_by_ratio = sweep(select(df1, all_of(norm_names_df1)), 2, ratio, "/")
+    adj_by_ratio = sweep(select(df, all_of(norm_names_df1)), 2, ratio, "/")
 
     #norm_to_pep = cbind(df1, adj_by_ratio)
-    
     
     #log2 trasnform the data
     
@@ -262,11 +269,11 @@ normalize_df = function(df1, method, fraction, show_norm_boxplot) {
     
     norm_to_avg = logged_norm - log_avg
     
-    final = as.data.frame(cbind(select(df1, -starts_with("abundance")), norm_to_avg))
+    final_protein = as.data.frame(cbind(select(df, -starts_with("abundance")), norm_to_avg))
     
     if (show_norm_boxplot == T){
       
-      before = df1 %>%
+      before = df %>%
         dplyr::select(.,starts_with("abundance"))
       
       colnames(before) = axis
@@ -285,21 +292,21 @@ normalize_df = function(df1, method, fraction, show_norm_boxplot) {
 
       colnames(norm_to_avg) = axis
       
+      plotDensities(norm_to_avg, main = "After Loading Normalization")
+      
       box3 = boxplot(norm_to_avg, col = "firebrick1", main = "After Normalizing To The Mean", ylab = "Protein abundance")
 
-      plotDensities(logged_norm, main = "After Loading Normalization")
       
       
     }
     
-    return(final)
+    return(final_protein)
     
   }
   
-  else if(method == "peptide"){
+  else if(method == "phospeptide"){
     
-    norm_names_df1 = grep("abundance", names(df1), value = TRUE)
-    norm_names_df2 = grep("abundance", names(df2), value = TRUE)
+    norm_names_df1 = grep("abundance", names(df), value = TRUE)
     
     # normalize all the peptide abundance values based on the ratio of the sum of each column
     # divided by the avg of the sums.
@@ -320,17 +327,14 @@ normalize_df = function(df1, method, fraction, show_norm_boxplot) {
     
     bar = barplot(ratio, names.arg = norm_names_df1, ylab = "ratio", ylim = c(0,ceiling(max(ratio,na.rm=T))), 
                   main = paste("Ratio of peptide samples"))
-    bar
-    
+
     # normalize protein data based on peptide ratios
     
-    adj_by_ratio = sweep(select(df1, all_of(norm_names_df1)), 2, ratio, "/")
-    
+    adj_by_ratio = sweep(select(df, all_of(norm_names_df1)), 2, ratio, "/")
     
     #description_cols_peptide = make_clean_names(description_cols[[2]])
     
-    norm_to_pep = cbind(select(df1, -starts_with("abundance")), adj_by_ratio)
-    
+    norm_to_pep = cbind(select(df, -starts_with("abundance")), adj_by_ratio)
     
     # log transform data, take the mean of all samples and subtract each sample from the mean
     
@@ -342,31 +346,67 @@ normalize_df = function(df1, method, fraction, show_norm_boxplot) {
     norm_to_avg = logged_norm - log_avg
     
     logged_norm_to_pep2 = cbind(select(norm_to_pep, -contains("abundance")), norm_to_avg)
-    
+    logged_norm_to_pep2 <- rename(logged_norm_to_pep2, "accession" = "first_master_protein_accession")
     # pulling the normalized protein input data from reduced_rows_protein into the peptide data
     
-    norm_to_prot <- rename(logged_norm_to_pep2, "accession" = "first_master_protein_accession")
+    phos_data = logged_norm_to_pep2 %>%
+      dplyr::select(., accession, contains("abundance")) 
     
-    protein_norm_df = normalized_protein %>%
-      select(accession, contains(norm_names_df2))
+    protein_data = normalized_protein %>%
+      dplyr::select(., accession, contains("abundance"))
     
-    join = left_join(norm_to_prot, protein_norm_df, by = "accession")
+    join = left_join(phos_data, protein_data, by = "accession")
 
-    relative_ptm_occupancy = select(join, contains(norm_names_df1)) - select(join, contains(norm_names_df2))
+    norm_names_protein = grep("abundance", names(normalized_protein), value = TRUE)
+    norm_names_phos = grep("abundance", names(norm_to_prot), value = TRUE)
+
+    relative_ptm_occupancy = select(join, all_of(norm_names_phos)) - select(join, all_of(norm_names_protein))
     colnames(relative_ptm_occupancy) = paste0("relative_occupancy_", norm_names_df1)
     
     
-    final = as.data.frame(cbind(select(df1, -contains("abundance")), norm_to_avg, relative_ptm_occupancy))
+    final = as.data.frame(cbind(select(df, -contains("abundance")), norm_to_avg, relative_ptm_occupancy))
+    
+    
+    if (show_norm_boxplot == T){
+      
+      before = df %>%
+        dplyr::select(.,starts_with("abundance"))
+      
+      colnames(before) = axis
+      
+      par(mfrow = c(1,2))
+      
+      plotDensities(log2(before), main = "Before Normalization")
+      
+      box1 = boxplot(log2(before + 0.25), col = "dodgerblue", main = "Before Normalization", ylab = "Phospeptide abundance")
+      
+      colnames(logged_norm) = axis
+      
+      plotDensities(logged_norm, main = "After Loading Normalization")
+      
+      box2 = boxplot(logged_norm, col = "springgreen", main = "After Loading Normalization", ylab = "Phospeptide abundance")
+      
+      colnames(norm_to_avg) = axis
+      
+      plotDensities(logged_norm, main = "After Loading Normalization")
+      
+      box3 = boxplot(norm_to_avg, col = "firebrick1", main = "After Normalizing To The Mean", ylab = "Phospeptide abundance")
+      
+      
+      
+    }
     
     return(final)
+    
+
   }
   
   
 }
 
-normalized_protein = normalize_df(df1 = reduced_rows_protein, "protein", "F2", T)
+normalized_protein = normalize_df(reduced_rows_protein, "protein", "F2", T)
 
-normalized_peptide = normalize_df(df1 = reduced_rows_peptide, "peptide", "F2")
+normalized_peptide = normalize_df(reduced_rows_peptide, "phospeptide", "F2", T)
 
 
 # quantification
