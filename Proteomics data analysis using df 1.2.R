@@ -4,12 +4,6 @@
 library(tidyverse)
 library(janitor)
 library(data.table)
-setDTthreads(4)
-getDTthreads()
-
-#library(ggrepel)
-#library(svglite)
-#library(scales)
 
 # load in the peptide and peptide file names as .txt files
 peptide_data = c("Muoio_BeckyWilson_STIM1-SKM_TMT10_FINAL_2020-05-03_SN2pt5_PeptideIsoforms")
@@ -566,19 +560,29 @@ final_peptides = new_final_df(df = normalized_peptide, method = list("abundance"
 
 abundance = final_peptides %>%
   dplyr::select(., -contains("relative_occupancy")) %>%
-  dplyr::select(., FC_abund = contains("FC"))
+  dplyr::select(., FC_abund = contains("FC"), q.value_ab = contains("q.value"))
 
 rel_occ = final_peptides %>%
   dplyr::select(., -contains("abundance")) %>%
-  dplyr::select(., FC_rel_occ = contains("FC"))
+  dplyr::select(., FC_rel_occ = contains("FC"), q.value_ro = contains("q.value"))
 
 comb = cbind(abundance, rel_occ)
 
-plot(comb$FC_abund, comb$FC_rel_occ, pch = 20, xlab = "Phosphopeptide abundance", ylab = "Relative occupancy", 
-     xlim = c(-2,4), ylim = c(-2,4), col = "gray31",
+comb2 = mutate(comb, colors = if_else(q.value_ab < 0.1 & q.value_ro > 0.1, "firebrick1", 
+                                      if_else(q.value_ab > 0.1 & q.value_ro < 0.1, "dodgerblue1", 
+                                              if_else(q.value_ab < 0.1 & q.value_ro < 0.1, "mediumorchid1",
+                                                      if_else(q.value_ab > 0.1 | q.value_ro > 0.1, alpha("gray80", 0.2), 
+                                                      "black")))))
+
+mod = lm(FC_rel_occ ~ FC_abund, data = comb2)
+
+plot(comb2$FC_abund, comb2$FC_rel_occ, pch = 20, xlab = "Phosphopeptide abundance", ylab = "Relative occupancy", 
+     xlim = c(-2,5), ylim = c(-2,5), col = comb2$colors,
      main = "Correlation between phosphopeptide abundance and relative occupancy")
-abline(a=0, b=1, lwd = 2)
-
-
-
+abline(a =,0, b = 1, lwd = 1)
+abline(h = 0, v = 0, lty = 2)
+text(x = 4.5, y = -1.5, labels = bquote(italic(R)^2 == .(format(summary(mod)$adj.r.squared, digits = 2))))
+legend("topleft", legend = c("abund.q.value < 0.1", "rel.occ.qvalue < 0.1", "both < 0.1", "N.S"),
+       col = c("firebrick1", "dodgerblue1", "mediumorchid1", "gray80"),
+       pch = 16)
 
