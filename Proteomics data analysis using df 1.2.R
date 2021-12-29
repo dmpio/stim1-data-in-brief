@@ -404,17 +404,19 @@ normalized_peptide = normalize_df(reduced_rows_peptide, "phospeptide", "F2", T)
 
 
 # quantification
-samples_to_compare = c("WT", "KO")
-number_of_reps = c(5,5)
-control = c("WT")
-variables = c("KO")
+# the variables below need to be filled out for the analysis
+# only add the samples you want to be compared
+samples_to_compare = c("WT", "KO") # control and varibale names that are unique to each sample set
+number_of_reps = c(5,5) # number of replicates, same order as above
+control = c("WT") # specify the name of the control sample
+variables = c("KO") # specify the name of the variable sample
 
 # type = 1 is the standard proteomics analysis, which consists of getting the mean, SD, FC, two.sided t.test,
 # and the adjusted p.value (q.value) using BH method
 # type = 2 uses the limma package to calculate the FC (coefficient) and the adjusted p.value
 # each type is split into 2 parts, the first is if the method is for just abundance, the second is for if the method is more than 2
 
-new_final_df = function(df, method, type){
+analysis = function(df, method, type){
   if (type == 1){
     
     multi_method = lapply(method, function(z){
@@ -551,9 +553,9 @@ new_final_df = function(df, method, type){
     
 }
 
-final_proteins = new_final_df(df = normalized_protein, method = list("abundance"), type = 2)
+final_proteins = analysis(df = normalized_protein, method = list("abundance"), type = 2)
 
-final_peptides = new_final_df(df = normalized_peptide, method = list("abundance", "relative_occupancy"), type = 2)
+final_peptides = analysis(df = normalized_peptide, method = list("abundance", "relative_occupancy"), type = 2)
 
 
 # scatter plot of phosphopeptide abundance vs relative occupancy
@@ -568,12 +570,13 @@ rel_occ = final_peptides %>%
 
 comb = cbind(abundance, rel_occ)
 
+# add colors that correlate with q.value
 comb2 = mutate(comb, colors = if_else(q.value_ab < 0.1 & q.value_ro > 0.1, "firebrick1", 
                                       if_else(q.value_ab > 0.1 & q.value_ro < 0.1, "dodgerblue1", 
                                               if_else(q.value_ab < 0.1 & q.value_ro < 0.1, "mediumorchid1",
                                                       if_else(q.value_ab > 0.1 | q.value_ro > 0.1, alpha("gray80", 0.2), 
                                                       "black")))))
-
+# linear model
 mod = lm(FC_rel_occ ~ FC_abund, data = comb2)
 
 plot(comb2$FC_abund, comb2$FC_rel_occ, pch = 20, xlab = "Phosphopeptide abundance", ylab = "Relative occupancy", 
