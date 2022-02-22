@@ -4,6 +4,7 @@
 library(tidyverse)
 library(janitor)
 library(data.table)
+library(ggrepel)
 
 # load in the peptide and peptide file names as .txt files
 peptide_data = c("Muoio_BeckyWilson_STIM1-SKM_TMT10_FINAL_2020-05-03_SN2pt5_PeptideIsoforms")
