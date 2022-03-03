@@ -353,7 +353,7 @@ normalize_df = function(df, method, fraction, show_norm_boxplot) {
     join = left_join(phos_data, protein_data, by = "accession")
 
     norm_names_protein = grep("abundance", names(normalized_protein), value = TRUE)
-    norm_names_phos = grep("abundance", names(norm_to_prot), value = TRUE)
+    norm_names_phos = grep("abundance", names(phos_data), value = TRUE)
 
     relative_ptm_occupancy = select(join, all_of(norm_names_phos)) - select(join, all_of(norm_names_protein))
     colnames(relative_ptm_occupancy) = paste0("relative_occupancy_", norm_names_df1)
