@@ -7,7 +7,7 @@ R script for Data in Brief article which introduces several base functions creat
 
 References:
 
-Lyons SP, Wilson RJ, Muoio DM, Grimsrud PA. Proteomics and phosphoproteomics datasets of a muscle-specific STIM1 loss-of-function mouse model. Data Brief. 2022 Mar 11;42:108051. doi: 10.1016/j.dib.2022.108051. PMID: 35345842; PMCID: PMC8956960.
+Lyons SP, Wilson RJ, Muoio DM, Grimsrud PA. Proteomics and phosphoproteomics datasets of a muscle-specific STIM1 loss-of-function mouse model. Data in Brief. 2022 Mar 11;42:108051. doi: 10.1016/j.dib.2022.108051. PMID: 35345842; PMCID: PMC8956960.
 
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM. OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
